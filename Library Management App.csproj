@@ -9,7 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Exceptions\" />
     <Folder Include="Notifiers\" />
     <Folder Include="UI\" />
     <Folder Include="Persistence\" />
