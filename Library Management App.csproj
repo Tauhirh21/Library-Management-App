@@ -12,7 +12,6 @@
     <Folder Include="Notifiers\" />
     <Folder Include="UI\" />
     <Folder Include="Persistence\" />
-    <Folder Include="Services\" />
   </ItemGroup>
 
 </Project>
