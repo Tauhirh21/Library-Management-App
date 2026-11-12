@@ -29,6 +29,8 @@ public class ConsoleMenu
             System.Console.WriteLine("10. Popular books");
             System.Console.WriteLine("11. Reserve a book");
             System.Console.WriteLine("12. View reservations for a book");
+            System.Console.WriteLine("13. Export overdue loans (CSV)");
+            System.Console.WriteLine("14. Export all books (CSV)");
             System.Console.WriteLine(" 0. Exit");
             System.Console.Write("Choice: ");
 
@@ -50,6 +52,8 @@ public class ConsoleMenu
                     case "10": ListPopularBooks(); break;
                     case "11": ReserveBook(); break;
                     case "12": ListReservations(); break;
+                    case "13": ExportOverdueLoans(); break;
+                    case "14": ExportBooks(); break;
                     case "0": return;
                     default: System.Console.WriteLine("Invalid choice."); break;
                 }
@@ -136,7 +140,6 @@ public class ConsoleMenu
             return;
         }
 
-        // UPDATED: 3 arguments now
         _service.TryReturn(match.LoanId, out var fine, out var reservedFor);
 
         var msg = fine > 0 ? $"✔ Returned. Fine: R{fine:0.00}" : "✔ Returned. No fine.";
@@ -168,7 +171,7 @@ public class ConsoleMenu
         foreach (var b in books) System.Console.WriteLine($"{i++}. {b.Title} by {b.Author}");
     }
 
-    // ---------------- New Reservation Actions ----------------
+    // ---------------- Reservations ----------------
 
     private void ReserveBook()
     {
@@ -201,6 +204,34 @@ public class ConsoleMenu
         var i = 1;
         foreach (var r in reservations)
             System.Console.WriteLine($"{i++}. {r.MemberId} (reserved {r.ReservedOn:yyyy-MM-dd})");
+    }
+
+    // ---------------- CSV Exports ----------------
+
+    private void ExportOverdueLoans()
+    {
+        var loans = _service.ActiveOverdueLoans().ToList();
+        if (loans.Count == 0)
+        {
+            System.Console.WriteLine("(no overdue loans to export)");
+            return;
+        }
+        var path = Path.Combine("data", "overdue_loans.csv");
+        CsvExporter.ExportOverdueLoans(path, loans);
+        System.Console.WriteLine($"✔ Exported {loans.Count} overdue loan(s) to {Path.GetFullPath(path)}");
+    }
+
+    private void ExportBooks()
+    {
+        var books = _service.GetAllBooks().ToList();
+        if (books.Count == 0)
+        {
+            System.Console.WriteLine("(no books to export)");
+            return;
+        }
+        var path = Path.Combine("data", "books.csv");
+        CsvExporter.ExportBooks(path, books);
+        System.Console.WriteLine($"✔ Exported {books.Count} book(s) to {Path.GetFullPath(path)}");
     }
 
     // ---------------- Helpers ----------------
