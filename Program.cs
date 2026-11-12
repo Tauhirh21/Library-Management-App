@@ -1,6 +1,8 @@
 ﻿using LibraryApp.Models;
+using LibraryApp.Notifiers;
 using LibraryApp.Persistence;
 using LibraryApp.Services;
+using LibraryApp.UI;
 
 const string DataFolder = "data";
 
@@ -10,48 +12,11 @@ var loans = new JsonRepository<Loan>(Path.Combine(DataFolder, "loans.json"), l =
 
 var service = new LibraryService(books, members, loans);
 
-service.BookBorrowed += (_, loan) => System.Console.WriteLine($"[event] BORROWED: {loan}");
-service.BookReturned += (_, loan) => System.Console.WriteLine($"[event] RETURNED: {loan}");
+// Wire up notifications
+var notifier = new ConsoleNotifier();
+service.BookBorrowed += (_, loan) => notifier.Notify($"Book borrowed: {loan.Isbn} by {loan.MemberId}");
+service.BookReturned += (_, loan) => notifier.Notify($"Book returned: {loan.Isbn} by {loan.MemberId}");
+service.OverdueLoanDetected += (_, loan) => notifier.Notify($"OVERDUE loan {loan.LoanId[..8]} ({loan.Isbn})");
 
-// Seed only if empty — so we can tell "first run" from "second run"
-if (!service.GetAllBooks().Any())
-{
-    service.AddBook(new Book
-    {
-        Isbn = "978-0",
-        Title = "Clean Code",
-        Author = "Robert Martin",
-        Genre = "Programming",
-        TotalCopies = 2,
-        AvailableCopies = 2
-    });
-    service.AddBook(new Book
-    {
-        Isbn = "978-1",
-        Title = "The Pragmatic Programmer",
-        Author = "Hunt & Thomas",
-        Genre = "Programming",
-        TotalCopies = 1,
-        AvailableCopies = 1
-    });
-    System.Console.WriteLine("Seeded 2 books.");
-}
-else
-{
-    System.Console.WriteLine($"Loaded {service.GetAllBooks().Count()} book(s) from disk.");
-}
-
-if (!service.GetAllMembers().Any())
-{
-    service.AddMember(new Member { MemberId = "M001", Name = "Alice", Email = "alice@example.com" });
-    System.Console.WriteLine("Seeded 1 member.");
-}
-else
-{
-    System.Console.WriteLine($"Loaded {service.GetAllMembers().Count()} member(s) from disk.");
-}
-
-System.Console.WriteLine();
-foreach (var b in service.GetAllBooks())
-    System.Console.WriteLine(b);
-
+var ui = new ConsoleMenu(service);
+ui.Run();
