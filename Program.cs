@@ -1,54 +1,57 @@
 ﻿using LibraryApp.Models;
+using LibraryApp.Persistence;
 using LibraryApp.Services;
 
-var service = new LibraryService();
+const string DataFolder = "data";
 
-// Wire up events so we can see them fire
+var books = new JsonRepository<Book>(Path.Combine(DataFolder, "books.json"), b => b.Isbn);
+var members = new JsonRepository<Member>(Path.Combine(DataFolder, "members.json"), m => m.MemberId);
+var loans = new JsonRepository<Loan>(Path.Combine(DataFolder, "loans.json"), l => l.LoanId);
+
+var service = new LibraryService(books, members, loans);
+
 service.BookBorrowed += (_, loan) => System.Console.WriteLine($"[event] BORROWED: {loan}");
 service.BookReturned += (_, loan) => System.Console.WriteLine($"[event] RETURNED: {loan}");
-service.OverdueLoanDetected += (_, loan) => System.Console.WriteLine($"[event] OVERDUE: {loan}");
 
-// Seed data
-service.AddBook(new Book
+// Seed only if empty — so we can tell "first run" from "second run"
+if (!service.GetAllBooks().Any())
 {
-    Isbn = "978-0",
-    Title = "Clean Code",
-    Author = "Robert Martin",
-    Genre = "Programming",
-    TotalCopies = 2,
-    AvailableCopies = 2
-});
-service.AddBook(new Book
+    service.AddBook(new Book
+    {
+        Isbn = "978-0",
+        Title = "Clean Code",
+        Author = "Robert Martin",
+        Genre = "Programming",
+        TotalCopies = 2,
+        AvailableCopies = 2
+    });
+    service.AddBook(new Book
+    {
+        Isbn = "978-1",
+        Title = "The Pragmatic Programmer",
+        Author = "Hunt & Thomas",
+        Genre = "Programming",
+        TotalCopies = 1,
+        AvailableCopies = 1
+    });
+    System.Console.WriteLine("Seeded 2 books.");
+}
+else
 {
-    Isbn = "978-1",
-    Title = "The Pragmatic Programmer",
-    Author = "Hunt & Thomas",
-    Genre = "Programming",
-    TotalCopies = 1,
-    AvailableCopies = 1
-});
-service.AddMember(new Member { MemberId = "M001", Name = "Alice", Email = "alice@example.com" });
+    System.Console.WriteLine($"Loaded {service.GetAllBooks().Count()} book(s) from disk.");
+}
 
-// Borrow twice
-service.TryBorrow("978-0", "M001", out var loan1);
-service.TryBorrow("978-1", "M001", out var loan2);
+if (!service.GetAllMembers().Any())
+{
+    service.AddMember(new Member { MemberId = "M001", Name = "Alice", Email = "alice@example.com" });
+    System.Console.WriteLine("Seeded 1 member.");
+}
+else
+{
+    System.Console.WriteLine($"Loaded {service.GetAllMembers().Count()} member(s) from disk.");
+}
 
-// List active loans
-System.Console.WriteLine("\n--- Active loans ---");
-foreach (var l in service.GetActiveLoans())
-    System.Console.WriteLine(l);
-
-// Search
-System.Console.WriteLine("\n--- Search 'clean' ---");
-foreach (var b in service.Search("clean"))
+System.Console.WriteLine();
+foreach (var b in service.GetAllBooks())
     System.Console.WriteLine(b);
 
-// Return one loan
-System.Console.WriteLine("\n--- Returning loan 1 ---");
-service.TryReturn(loan1!.LoanId, out var fine);
-System.Console.WriteLine($"Fine: R{fine:0.00}");
-
-// Popular books
-System.Console.WriteLine("\n--- Popular books ---");
-foreach (var b in service.PopularBooks())
-    System.Console.WriteLine(b.Title);

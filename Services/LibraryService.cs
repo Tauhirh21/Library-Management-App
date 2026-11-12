@@ -6,9 +6,9 @@ namespace LibraryApp.Services;
 
 public class LibraryService : IBorrowable
 {
-    private readonly List<Book> _books = new();
-    private readonly List<Member> _members = new();
-    private readonly List<Loan> _loans = new();
+    private readonly IRepository<Book> _books;
+    private readonly IRepository<Member> _members;
+    private readonly IRepository<Loan> _loans;
 
     public const int LoanPeriodDays = 14;
     public const decimal FinePerDay = 2.00m;
@@ -17,33 +17,40 @@ public class LibraryService : IBorrowable
     public event EventHandler<Loan>? BookReturned;
     public event EventHandler<Loan>? OverdueLoanDetected;
 
+    public LibraryService(IRepository<Book> books,
+                          IRepository<Member> members,
+                          IRepository<Loan> loans)
+    {
+        _books = books;
+        _members = members;
+        _loans = loans;
+    }
+
     // --- Books ---
     public void AddBook(Book book)
     {
-        if (_books.Any(b => b.Isbn == book.Isbn))
+        if (_books.GetById(book.Isbn) is not null)
             throw new LibraryException($"Book with ISBN '{book.Isbn}' already exists.");
         _books.Add(book);
     }
 
-    public IEnumerable<Book> GetAllBooks() => _books.ToList();
+    public IEnumerable<Book> GetAllBooks() => _books.GetAll();
 
     public Book GetBook(string isbn) =>
-        _books.FirstOrDefault(b => b.Isbn == isbn)
-        ?? throw new BookNotFoundException(isbn);
+        _books.GetById(isbn) ?? throw new BookNotFoundException(isbn);
 
     // --- Members ---
     public void AddMember(Member member)
     {
-        if (_members.Any(m => m.MemberId == member.MemberId))
+        if (_members.GetById(member.MemberId) is not null)
             throw new LibraryException($"Member '{member.MemberId}' already exists.");
         _members.Add(member);
     }
 
-    public IEnumerable<Member> GetAllMembers() => _members.ToList();
+    public IEnumerable<Member> GetAllMembers() => _members.GetAll();
 
     public Member GetMember(string id) =>
-        _members.FirstOrDefault(m => m.MemberId == id)
-        ?? throw new MemberNotFoundException(id);
+        _members.GetById(id) ?? throw new MemberNotFoundException(id);
 
     // --- Borrow / Return ---
     public bool TryBorrow(string isbn, string memberId, out Loan? loan)
@@ -56,6 +63,8 @@ public class LibraryService : IBorrowable
             throw new BookNotAvailableException(isbn);
 
         book.AvailableCopies--;
+        _books.Update(book);
+
         loan = new Loan
         {
             Isbn = isbn,
@@ -71,7 +80,7 @@ public class LibraryService : IBorrowable
     public bool TryReturn(string loanId, out decimal fine)
     {
         fine = 0m;
-        var loan = _loans.FirstOrDefault(l => l.LoanId == loanId)
+        var loan = _loans.GetById(loanId)
             ?? throw new LibraryException($"Loan '{loanId}' not found.");
 
         if (loan.Status == LoanStatus.Returned)
@@ -88,16 +97,21 @@ public class LibraryService : IBorrowable
 
         var book = GetBook(loan.Isbn);
         book.AvailableCopies++;
+        _books.Update(book);
+        _loans.Update(loan);
+
         BookReturned?.Invoke(this, loan);
         return true;
     }
 
     // --- Queries ---
-    public IEnumerable<Loan> GetAllLoans() => _loans.ToList();
-    public IEnumerable<Loan> GetActiveLoans() => _loans.Where(l => l.Status == LoanStatus.Active);
+    public IEnumerable<Loan> GetAllLoans() => _loans.GetAll();
+
+    public IEnumerable<Loan> GetActiveLoans() =>
+        _loans.GetAll().Where(l => l.Status == LoanStatus.Active);
 
     public IEnumerable<Book> Search(string term) =>
-        _books.Where(b =>
+        _books.GetAll().Where(b =>
             b.Title.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             b.Author.Contains(term, StringComparison.OrdinalIgnoreCase) ||
             b.Isbn.Contains(term, StringComparison.OrdinalIgnoreCase) ||
@@ -105,15 +119,16 @@ public class LibraryService : IBorrowable
 
     public IEnumerable<Loan> ActiveOverdueLoans()
     {
-        var overdue = _loans.Where(l => l.IsOverdue).ToList();
+        var overdue = _loans.GetAll().Where(l => l.IsOverdue).ToList();
         foreach (var loan in overdue)
             OverdueLoanDetected?.Invoke(this, loan);
         return overdue;
     }
 
     public IEnumerable<Book> PopularBooks(int top = 5) =>
-        _loans.GroupBy(l => l.Isbn)
+        _loans.GetAll()
+              .GroupBy(l => l.Isbn)
               .OrderByDescending(g => g.Count())
               .Take(top)
-              .Select(g => _books.First(b => b.Isbn == g.Key));
+              .Select(g => _books.GetById(g.Key)!);
 }
