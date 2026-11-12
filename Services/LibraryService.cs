@@ -27,8 +27,7 @@ public class LibraryService : IBorrowable
         _books = books;
         _members = members;
         _loans = loans;
-        _reservations = _reservations;
-
+        _reservations = reservations;
     }
 
     // --- Books ---
