@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+  </Folder>
   <Project Path="../LibraryApp.Tests/LibraryApp.Tests.csproj" />
   <Project Path="Library Management App.csproj" />
 </Solution>

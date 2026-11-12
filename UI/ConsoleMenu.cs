@@ -1,5 +1,6 @@
 ﻿using LibraryApp.Exceptions;
 using LibraryApp.Models;
+using LibraryApp.Persistence;
 using LibraryApp.Services;
 
 namespace LibraryApp.UI;
@@ -26,6 +27,8 @@ public class ConsoleMenu
             System.Console.WriteLine(" 8. Active loans");
             System.Console.WriteLine(" 9. Overdue loans");
             System.Console.WriteLine("10. Popular books");
+            System.Console.WriteLine("11. Reserve a book");
+            System.Console.WriteLine("12. View reservations for a book");
             System.Console.WriteLine(" 0. Exit");
             System.Console.Write("Choice: ");
 
@@ -45,6 +48,8 @@ public class ConsoleMenu
                     case "8": ListActiveLoans(); break;
                     case "9": ListOverdueLoans(); break;
                     case "10": ListPopularBooks(); break;
+                    case "11": ReserveBook(); break;
+                    case "12": ListReservations(); break;
                     case "0": return;
                     default: System.Console.WriteLine("Invalid choice."); break;
                 }
@@ -131,10 +136,14 @@ public class ConsoleMenu
             return;
         }
 
-        _service.TryReturn(match.LoanId, out var fine);
-        System.Console.WriteLine(fine > 0
-            ? $"✔ Returned. Fine: R{fine:0.00}"
-            : "✔ Returned. No fine.");
+        // UPDATED: 3 arguments now
+        _service.TryReturn(match.LoanId, out var fine, out var reservedFor);
+
+        var msg = fine > 0 ? $"✔ Returned. Fine: R{fine:0.00}" : "✔ Returned. No fine.";
+        System.Console.WriteLine(msg);
+
+        if (reservedFor is not null)
+            System.Console.WriteLine($">> Copy auto-borrowed to next reservation: {reservedFor}");
     }
 
     private void ListActiveLoans()
@@ -157,6 +166,41 @@ public class ConsoleMenu
         if (books.Count == 0) { System.Console.WriteLine("(no borrowing history)"); return; }
         var i = 1;
         foreach (var b in books) System.Console.WriteLine($"{i++}. {b.Title} by {b.Author}");
+    }
+
+    // ---------------- New Reservation Actions ----------------
+
+    private void ReserveBook()
+    {
+        var isbn = Prompt("ISBN");
+        var memberId = Prompt("Member ID");
+
+        try
+        {
+            _service.Reserve(isbn, memberId);
+            var pos = _service.ReservationQueueLength(isbn);
+            System.Console.WriteLine($"✔ Reserved. You are position {pos} in the queue.");
+        }
+        catch (LibraryException ex)
+        {
+            System.Console.WriteLine($"⚠ {ex.Message}");
+        }
+    }
+
+    private void ListReservations()
+    {
+        var isbn = Prompt("ISBN");
+        var reservations = _service.GetReservationsFor(isbn).ToList();
+
+        if (reservations.Count == 0)
+        {
+            System.Console.WriteLine("(no active reservations)");
+            return;
+        }
+
+        var i = 1;
+        foreach (var r in reservations)
+            System.Console.WriteLine($"{i++}. {r.MemberId} (reserved {r.ReservedOn:yyyy-MM-dd})");
     }
 
     // ---------------- Helpers ----------------

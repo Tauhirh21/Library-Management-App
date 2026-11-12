@@ -5,5 +5,5 @@ namespace LibraryApp.Interfaces;
 public interface IBorrowable
 {
     bool TryBorrow(string isbn, string memberId, out Loan? loan);
-    bool TryReturn(string loanId, out decimal fine);
+    bool TryReturn(string loanId, out decimal fine, out string? reservedFor);
 }

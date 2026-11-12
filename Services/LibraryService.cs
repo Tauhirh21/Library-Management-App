@@ -9,6 +9,8 @@ public class LibraryService : IBorrowable
     private readonly IRepository<Book> _books;
     private readonly IRepository<Member> _members;
     private readonly IRepository<Loan> _loans;
+    private readonly IRepository<Reservation> _reservations;
+
 
     public const int LoanPeriodDays = 14;
     public const decimal FinePerDay = 2.00m;
@@ -19,11 +21,14 @@ public class LibraryService : IBorrowable
 
     public LibraryService(IRepository<Book> books,
                           IRepository<Member> members,
-                          IRepository<Loan> loans)
+                          IRepository<Loan> loans,
+                          IRepository<Reservation> reservations)
     {
         _books = books;
         _members = members;
         _loans = loans;
+        _reservations = _reservations;
+
     }
 
     // --- Books ---
@@ -77,9 +82,10 @@ public class LibraryService : IBorrowable
         return true;
     }
 
-    public bool TryReturn(string loanId, out decimal fine)
+    public bool TryReturn(string loanId, out decimal fine, out string? reservedFor)
     {
         fine = 0m;
+        reservedFor = null;
         var loan = _loans.GetById(loanId)
             ?? throw new LibraryException($"Loan '{loanId}' not found.");
 
@@ -97,6 +103,24 @@ public class LibraryService : IBorrowable
 
         var book = GetBook(loan.Isbn);
         book.AvailableCopies++;
+
+        // NEW: If someone is waiting in the reservation queue, give them the copy
+        var next = FulfilNextReservation(loan.Isbn);
+        if (next is not null)
+        {
+            book.AvailableCopies--;
+            var reservedLoan = new Loan
+            {
+                Isbn = loan.Isbn,
+                MemberId = next.MemberId,
+                BorrowedOn = DateTime.Now,
+                DueOn = DateTime.Now.AddDays(LoanPeriodDays)
+            };
+            _loans.Add(reservedLoan);
+            reservedFor = next.MemberId;
+            BookBorrowed?.Invoke(this, reservedLoan);
+        }
+
         _books.Update(book);
         _loans.Update(loan);
 
@@ -131,4 +155,55 @@ public class LibraryService : IBorrowable
               .OrderByDescending(g => g.Count())
               .Take(top)
               .Select(g => _books.GetById(g.Key)!);
+    // --- Reservations ---
+
+    public Reservation Reserve(string isbn, string memberId)
+    {
+        var book = GetBook(isbn);
+        GetMember(memberId);
+
+        if (book.AvailableCopies > 0)
+            throw new LibraryException(
+                $"ISBN '{isbn}' has copies available — borrow instead of reserving.");
+
+        // Prevent duplicate active reservation for the same member/book pair
+        var existing = _reservations.GetAll()
+            .FirstOrDefault(r => r.Isbn == isbn && r.MemberId == memberId && !r.Fulfilled);
+        if (existing is not null)
+            return existing;
+
+        var reservation = new Reservation
+        {
+            Isbn = isbn,
+            MemberId = memberId,
+            ReservedOn = DateTime.Now
+        };
+        _reservations.Add(reservation);
+        return reservation;
+    }
+
+    public IEnumerable<Reservation> GetReservationsFor(string isbn) =>
+        _reservations.GetAll()
+            .Where(r => r.Isbn == isbn && !r.Fulfilled)
+            .OrderBy(r => r.ReservedOn);
+
+    public int ReservationQueueLength(string isbn) =>
+        _reservations.GetAll().Count(r => r.Isbn == isbn && !r.Fulfilled);
+
+    // Returns the next reservation in line (FIFO) and marks it fulfilled.
+    // Called from TryReturn — see Step 10.4.
+    private Reservation? FulfilNextReservation(string isbn)
+    {
+        var next = _reservations.GetAll()
+            .Where(r => r.Isbn == isbn && !r.Fulfilled)
+            .OrderBy(r => r.ReservedOn)   // FIFO — real queue semantics
+            .FirstOrDefault();
+
+        if (next is null) return null;
+
+        next.Fulfilled = true;
+        _reservations.Update(next);
+        return next;
+    }
 }
+
